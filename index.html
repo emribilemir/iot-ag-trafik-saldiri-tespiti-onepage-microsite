@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IoT Ağ Trafiğinde Yapay Zekâ Tabanlı Saldırı Tespiti</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+    <style>
+      /* ===========================================
+         CSS CUSTOM PROPERTIES (THEME)
+         =========================================== */
+      :root {
+        --bg-primary: #060b12;
+        --bg-secondary: #0a111f;
+        --panel: #0d1626;
+        --panel-strong: #101c31;
+        --line: rgba(133, 246, 255, 0.18);
+        --line-strong: rgba(133, 246, 255, 0.34);
+        --text-primary: #eefbff;
+        --text-secondary: #a7b8ca;
+        --text-muted: #71869d;
+        --accent: #7ddfd6;
+        --accent-blue: #7ab7d9;
+        --accent-magenta: #ff6ab7;
+        --accent-green: #39d353;
+        --warning: #f7c948;
+        --danger: #ff5a7a;
+
+        --font-display: "IBM Plex Sans", "Helvetica Neue", Helvetica, sans-serif;
+        --font-body: "IBM Plex Sans", "Helvetica Neue", Helvetica, sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+
+        --title-size: clamp(1.8rem, 4.4vw, 3.4rem);
+        --h2-size: clamp(1.3rem, 2.6vw, 2rem);
+        --h3-size: clamp(0.95rem, 1.8vw, 1.2rem);
+        --body-size: clamp(0.82rem, 1.1vw, 1.05rem);
+        --small-size: clamp(0.7rem, 0.85vw, 0.8rem);
+        --mono-size: clamp(0.64rem, 0.8vw, 0.76rem);
+
+        --slide-padding: clamp(1.5rem, 3.5vw, 3.5rem);
+        --content-gap: clamp(1rem, 2vw, 2rem);
+        --element-gap: clamp(0.5rem, 1vw, 1rem);
+
+        --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        --duration-normal: 0.68s;
+      }
+
+      /* ===========================================
+         BASE STYLES & SCROLL SNAPPING
+         =========================================== */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .scroll-container {
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      body {
+        font-family: var(--font-body);
+        color: var(--text-primary);
+        background: #050a11;
+        position: relative;
+      }
+
+      /* Decorative background glows */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse at 18% 16%, rgba(125, 223, 214, 0.065) 0%, rgba(125, 223, 214, 0.02) 34%, transparent 58%),
+          radial-gradient(ellipse at 84% 76%, rgba(122, 183, 217, 0.05) 0%, rgba(122, 183, 217, 0.012) 38%, transparent 64%),
+          linear-gradient(90deg, rgba(210,240,255,0.015) 1px, transparent 1px),
+          linear-gradient(rgba(210,240,255,0.012) 1px, transparent 1px),
+          linear-gradient(180deg, #050a11 0%, #07101b 44%, #050b13 100%);
+        background-size:
+          100% 100%,
+          100% 100%,
+          clamp(2.6rem, 4.8vw, 4.2rem) clamp(2.6rem, 4.8vw, 4.2rem),
+          clamp(2.6rem, 4.8vw, 4.2rem) clamp(2.6rem, 4.8vw, 4.2rem),
+          100% 100%;
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        opacity: 0.1;
+        background:
+          linear-gradient(115deg, transparent 0 30%, rgba(125,223,214,0.02) 45%, transparent 62%),
+          repeating-linear-gradient(0deg, rgba(255,255,255,0.01) 0, rgba(255,255,255,0.01) 1px, transparent 1px, transparent 6px);
+      }
+
+      /* Floating Vertical Navigation Dots */
+      .nav-dots {
+        position: fixed;
+        right: 2rem;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .nav-dot {
+        width: 4px;
+        height: 24px;
+        border-radius: 999px;
+        border: 0;
+        background: rgba(145, 164, 184, 0.22);
+        cursor: pointer;
+        transition: height 260ms var(--ease-out-expo), background 260ms ease, box-shadow 260ms ease;
+      }
+
+      .nav-dot.active {
+        height: 40px;
+        background: rgba(125, 223, 214, 0.82);
+        box-shadow: 0 0 10px rgba(125,223,214,0.32);
+      }
+
+      /* ===========================================
+         BACKGROUND SCENE MORPHING ENGINE
+         =========================================== */
+      .fixed-scene-container {
+        position: fixed;
+        left: 50%;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 1;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .network-engine {
+        width: min(42vw, 520px);
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform: scale(1) translateY(0);
+        opacity: 1;
+        transition: transform 1s var(--ease-out-expo), 
+                    opacity 1s cubic-bezier(0.16, 1, 0.3, 1),
+                    filter 1s ease;
+      }
+
+      /* Desktop node and card overlays align exactly with background scene */
+      .engine-labels-overlay,
+      .dataset-cards-overlay {
+        position: absolute;
+        left: 75% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: min(42vw, 520px) !important;
+        height: min(42vw, 520px) !important;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .engine-svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .engine-ring {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 1;
+        opacity: 0.18;
+        transform-origin: center;
+        transition: all 1s var(--ease-out-expo);
+      }
+      .ring-1 { stroke-dasharray: 40 20 80 15; animation: coreSpin 35s linear infinite; stroke: var(--accent-blue); }
+      .ring-2 { stroke-dasharray: 20 12; animation: coreSpinRev 25s linear infinite; stroke: var(--accent); }
+      .ring-3 { stroke: var(--accent-green); opacity: 0.35; stroke-width: 1.5; animation: corePulseRing 2.4s ease-in-out infinite; }
+
+      .engine-line {
+        stroke: var(--accent-blue);
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+        opacity: 0.22;
+        transform-origin: center;
+        transition: all 1s var(--ease-out-expo);
+        animation: streamFlow 12s linear infinite;
+      }
+
+      .stream-path {
+        fill: none;
+        stroke-width: 1.8;
+        stroke-dasharray: 4 6;
+        opacity: 0;
+        transition: all 1s ease;
+      }
+      .path-normal { stroke: var(--accent); }
+      .path-attack { stroke: var(--accent-magenta); }
+
+      .engine-pipeline-line {
+        fill: none;
+        stroke: var(--accent-blue);
+        stroke-width: 1.5;
+        stroke-dasharray: 6 6;
+        opacity: 0;
+        transition: all 1s ease;
+      }
+
+      .engine-core-node {
+        fill: var(--accent);
+        filter: drop-shadow(0 0 10px var(--accent));
+        transform-origin: center;
+        transition: all 1s var(--ease-out-expo);
+      }
+
+      .split-node {
+        opacity: 0;
+        cx: 100px;
+        cy: 100px;
+        transform-origin: center;
+        transition: all 1s var(--ease-out-expo);
+      }
+      .split-normal { fill: var(--accent); filter: drop-shadow(0 0 8px var(--accent)); }
+      .split-attack { fill: var(--accent-magenta); filter: drop-shadow(0 0 8px var(--accent-magenta)); }
+
+      .warning-ring {
+        fill: none;
+        stroke: var(--danger);
+        stroke-width: 1.5;
+        stroke-dasharray: 4 4;
+        opacity: 0;
+        transform: scale(0.7);
+        transform-origin: center;
+        transition: all 1s var(--ease-out-expo);
+      }
+
+      .threat-dot {
+        fill: var(--danger);
+        filter: drop-shadow(0 0 8px var(--danger));
+        opacity: 0;
+        transform: scale(0);
+        transform-origin: center;
+        transition: all 0.8s var(--ease-out-expo);
+      }
+
+      @keyframes coreSpin { to { transform: rotate(360deg); } }
+      @keyframes coreSpinRev { to { transform: rotate(-360deg); } }
+      @keyframes corePulseRing {
+        0%, 100% { transform: scale(0.96); opacity: 0.25; }
+        50% { transform: scale(1.04); opacity: 0.55; }
+      }
+      @keyframes streamFlow {
+        to { stroke-dashoffset: -20; }
+      }
+
+      /* ===========================================
+         BODY STATES (MORPHING STAGES)
+         =========================================== */
+      
+      /* STAGE 1: Hero - Default pulsing core */
+      body[data-stage="1"] .engine-core-node {
+        animation: pulseNode 1.5s ease-in-out infinite;
+      }
+      @keyframes pulseNode {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.2); }
+      }
+
+      /* STAGE 2: Problem - Threats emerge, magenta pulses */
+      body[data-stage="2"] .engine-core-node {
+        fill: var(--accent-magenta);
+        filter: drop-shadow(0 0 15px var(--accent-magenta));
+      }
+      body[data-stage="2"] .warning-ring {
+        opacity: 0.7;
+        transform: scale(1);
+      }
+      body[data-stage="2"] .threat-dot {
+        opacity: 1;
+        transform: scale(1);
+      }
+      body[data-stage="2"] .line-nw,
+      body[data-stage="2"] .line-se {
+        stroke: var(--accent-magenta);
+        stroke-width: 1.5;
+        opacity: 0.65;
+        animation: streamFlow 3s linear infinite;
+      }
+
+      /* STAGE 3: Dataset - Split core flows normal/attack */
+      body[data-stage="3"] .engine-core-node {
+        opacity: 0;
+        transform: scale(0.4);
+      }
+      body[data-stage="3"] .split-node {
+        opacity: 1;
+      }
+      body[data-stage="3"] .split-normal {
+        cx: 45px;
+        cy: 45px;
+      }
+      body[data-stage="3"] .split-attack {
+        cx: 155px;
+        cy: 155px;
+      }
+      body[data-stage="3"] .stream-path {
+        opacity: 0.7;
+        animation: streamFlow 2s linear infinite;
+      }
+      body[data-stage="3"] .ring-3 {
+        stroke: var(--accent-magenta);
+      }
+
+      /* STAGE 4: Pipeline - Horizontal track flow */
+      body[data-stage="4"] .engine-core-node {
+        opacity: 0;
+        transform: scale(0.4);
+      }
+      body[data-stage="4"] .engine-line {
+        opacity: 0.05;
+        transform: scale(0.5);
+      }
+      body[data-stage="4"] .engine-ring {
+        opacity: 0.05;
+        transform: scale(0.8);
+      }
+      body[data-stage="4"] .engine-pipeline-line {
+        opacity: 0.7;
+        animation: streamFlow 1.5s linear infinite;
+      }
+      body[data-stage="4"] .split-node {
+        opacity: 1;
+      }
+      body[data-stage="4"] .split-normal {
+        cx: 60px;
+        cy: 100px;
+      }
+      body[data-stage="4"] .split-attack {
+        cx: 140px;
+        cy: 100px;
+      }
+
+      /* STAGE 5 & 6: Canlı Terminal & Model Lab - core opens up (fades & scales out) */
+      body[data-stage="5"] .network-engine,
+      body[data-stage="6"] .network-engine {
+        transform: scale(1.6);
+        opacity: 0;
+        filter: blur(5px);
+      }
+
+      /* STAGE 7: Class Balance - Imbalanced core representation */
+      body[data-stage="7"] .engine-core-node {
+        opacity: 0;
+        transform: scale(0.4);
+      }
+      body[data-stage="7"] .split-node {
+        opacity: 1;
+      }
+      body[data-stage="7"] .split-normal {
+        cx: 45px;
+        cy: 45px;
+        opacity: 0.2;
+        transform: scale(0.6);
+      }
+      body[data-stage="7"] .split-attack {
+        cx: 155px;
+        cy: 155px;
+        opacity: 1;
+        transform: scale(1.3);
+      }
+      body[data-stage="7"] .stream-path.path-normal {
+        opacity: 0.15;
+      }
+      body[data-stage="7"] .stream-path.path-attack {
+        opacity: 1;
+        stroke-width: 2.5;
+        animation: streamFlow 1.2s linear infinite;
+      }
+
+      /* STAGE 8: Results - Verified / Classified green state */
+      body[data-stage="8"] .engine-core-node {
+        fill: var(--accent-green);
+        filter: drop-shadow(0 0 16px var(--accent-green));
+        transform: scale(1.25);
+      }
+      body[data-stage="8"] .network-engine {
+        transform: scale(1.42);
+        opacity: 0.16;
+        filter: blur(7px);
+      }
+      body[data-stage="8"] .ring-3 {
+        stroke: var(--accent-green);
+        stroke-width: 2.5;
+        animation: corePulseRing 1.5s ease-in-out infinite;
+      }
+      body[data-stage="8"] .engine-ring {
+        stroke: var(--accent-green);
+        opacity: 0.25;
+      }
+
+      /* STAGE 9: Risk Analysis - Warnings & Errors flash */
+      body[data-stage="9"] .engine-core-node {
+        fill: var(--warning);
+        filter: drop-shadow(0 0 15px var(--warning));
+      }
+      body[data-stage="9"] .warning-ring {
+        stroke: var(--danger);
+        opacity: 0.8;
+        transform: scale(1.1);
+      }
+      body[data-stage="9"] .threat-dot.dot-nw {
+        opacity: 1;
+        transform: scale(1);
+        fill: var(--warning);
+        filter: drop-shadow(0 0 8px var(--warning));
+      }
+      body[data-stage="9"] .threat-dot.dot-se {
+        opacity: 1;
+        transform: scale(1.2);
+        fill: var(--danger);
+        filter: drop-shadow(0 0 10px var(--danger));
+      }
+
+      /* STAGE 10: Closing - Product wraps up / secure green core */
+      body[data-stage="10"] .engine-core-node {
+        fill: var(--accent-green);
+        filter: drop-shadow(0 0 16px var(--accent-green));
+        transform: scale(1.2);
+        animation: pulseNode 1.5s ease-in-out infinite;
+      }
+      body[data-stage="10"] .engine-line {
+        opacity: 0.22;
+        stroke: var(--accent-green);
+        animation: streamFlow 12s linear infinite;
+      }
+      body[data-stage="10"] .ring-1 {
+        stroke: var(--accent-green);
+        opacity: 0.35;
+      }
+      body[data-stage="10"] .ring-2 {
+        stroke: var(--accent-blue);
+        opacity: 0.28;
+      }
+      body[data-stage="10"] .ring-3 {
+        stroke: var(--accent-green);
+        opacity: 0.55;
+        animation: corePulseRing 2.4s ease-in-out infinite;
+      }
+
+      /* ===========================================
+         FULLSCREEN SECTIONS (SINGLE COLUMN)
+         =========================================== */
+      .slide-section {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 3rem 8%;
+        position: relative;
+        overflow: hidden;
+        z-index: 2;
+        text-align: left;
+      }
+
+      /* Copy Block container inside sections */
+      .copy-block {
+        max-width: 44%;
+        margin-bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      /* Center code lab and live terminals specifically since visual engine fades out here */
+      #section-5, #section-6 {
+        align-items: center;
+        text-align: center;
+        padding-left: 2rem;
+        padding-right: 2rem;
+      }
+      #section-5 .copy-block, #section-6 .copy-block {
+        max-width: min(90vw, 780px);
+        align-items: center;
+      }
+
+      /* Typography adjustments */
+      h1, h2, h3 {
+        font-family: var(--font-display);
+        font-weight: 600;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+      }
+
+      h1 { font-size: var(--title-size); }
+      h2 { font-size: var(--h2-size); }
+      h3 { font-size: var(--h3-size); }
+
+      p {
+        color: var(--text-secondary);
+        font-size: var(--body-size);
+        line-height: 1.55;
+        margin-top: var(--element-gap);
+      }
+
+      strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      code {
+        font-family: var(--font-mono);
+        color: var(--accent);
+        background: rgba(125, 223, 214, 0.08);
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+
+      .kicker {
+        font-family: var(--font-mono);
+        color: var(--accent);
+        font-size: var(--small-size);
+        line-height: 1.2;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+      }
+
+      .accent-text { color: var(--accent); }
+      .magenta-text { color: var(--accent-magenta); }
+
+      /* ===========================================
+         SCROLL REVEAL ANIMATIONS (TEXT & PANELS)
+         =========================================== */
+      .reveal {
+        opacity: 0;
+        transform: translateY(20px);
+        transition: opacity var(--duration-normal) var(--ease-out-expo),
+                    transform var(--duration-normal) var(--ease-out-expo);
+      }
+      .slide-section.visible .reveal {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .delay-1 { transition-delay: 0.12s; }
+      .delay-2 { transition-delay: 0.22s; }
+      .delay-3 { transition-delay: 0.32s; }
+
+      /* ===========================================
+         PANELS & COMMON HUD STYLING
+         =========================================== */
+      .panel {
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(16,28,49,0.85), rgba(6,11,18,0.75));
+        border-radius: clamp(0.6rem, 1vw, 0.8rem);
+        box-shadow: 0 15px 35px rgba(0,0,0,0.35);
+        overflow: hidden;
+      }
+
+      /* ===========================================
+         VISUAL ELEMENTS (IN-SECTION)
+         =========================================== */
+
+      /* Node styling inside overlaid map (Section 2) */
+      .node {
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--line-strong);
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        background: rgba(6,11,18,0.92);
+        border-radius: 4px;
+        transition: all 0.5s ease;
+      }
+      .node.hot {
+        border-color: var(--accent-magenta);
+        color: var(--accent-magenta);
+        box-shadow: 0 0 15px rgba(255,106,183,0.3);
+      }
+
+      /* Dataset visual overlay (Section 3) */
+      .data-card {
+        padding: 0.8rem 1.2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .data-card .label {
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        font-size: 0.65rem;
+        text-transform: uppercase;
+      }
+      .data-card b {
+        font-family: var(--font-display);
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        margin-top: 0.2rem;
+      }
+      .attack-card { border-color: rgba(255, 90, 122, 0.28); }
+      .normal-card { border-color: rgba(125, 223, 214, 0.26); }
+
+      /* Pipeline vertical timeline (Section 4) */
+      .pipeline-vertical {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        width: 100%;
+        max-width: 440px;
+        margin-top: 1.5rem;
+        text-align: left;
+      }
+      .pipeline-vertical .pipe-step-box {
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        padding: 0.65rem 1.1rem;
+        border: 1px solid var(--line);
+        background: rgba(13, 22, 38, 0.55);
+        border-radius: 6px;
+      }
+      .pipeline-vertical .pipe-step-box span {
+        font-family: var(--font-mono);
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 1.15rem;
+        width: 24px;
+        flex-shrink: 0;
+      }
+      .pipe-step-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.08rem;
+      }
+      .pipe-step-info b {
+        font-size: 0.98rem;
+        color: var(--text-primary);
+      }
+      .pipe-step-info p {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+        margin: 0;
+      }
+
+      /* 5. TERMINAL WINDOWS (SIDE BY SIDE ON WIDE VIEWPOTS) */
+      .terminal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 900px;
+        margin-top: 1.5rem;
+        text-align: left;
+      }
+      .terminal {
+        height: clamp(14rem, 36vh, 22rem);
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .terminal-bar {
+        display: flex;
+        align-items: center;
+        gap: clamp(0.34rem, 0.6vw, 0.5rem);
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255,255,255,0.04);
+      }
+      .traffic-light {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+      .red { background: #ff5f57; }
+      .yellow { background: #ffbd2e; }
+      .green { background: #28c840; }
+      .terminal-title {
+        margin-left: 0.4rem;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+      .terminal-body {
+        padding: 1rem;
+        font-family: var(--font-mono);
+        font-size: var(--mono-size);
+        line-height: 1.55;
+        color: rgba(238, 251, 255, 0.88);
+        white-space: pre-wrap;
+        overflow-y: auto;
+      }
+      .terminal-line {
+        display: block;
+        min-height: 1.55em;
+        opacity: 0;
+        transform: translateY(8px);
+        filter: blur(1.5px);
+        transition:
+          opacity 520ms var(--ease-out-expo),
+          transform 520ms var(--ease-out-expo),
+          filter 520ms var(--ease-out-expo);
+      }
+      .terminal-line.visible {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+      }
+      .terminal-body::after,
+      .run-output::after {
+        content: "█";
+        color: rgba(238,251,255,0.78);
+        animation: terminalCursorBlink 0.9s steps(1) infinite;
+        animation-delay: 0s;
+      }
+      .terminal-body:not(.cursor)::after,
+      .run-output:not(.cursor)::after {
+        color: transparent;
+      }
+      @keyframes terminalCursorBlink { 50% { opacity: 0; } }
+
+      /* 6. CODE LAB (SIDE BY SIDE ON WIDE VIEWPORTS, FIXED PANEL HEIGHT) */
+      .lab-grid {
+        display: grid;
+        grid-template-columns: 1.25fr 0.75fr;
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 900px;
+        margin-top: 1.5rem;
+        text-align: left;
+      }
+      .editor {
+        height: clamp(22rem, 58vh, 32rem); /* Completely stable and constant height */
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .editor-body {
+        display: block;
+        padding: 0.85rem;
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        line-height: 1.45;
+        color: #dbeafe;
+        overflow: hidden;
+      }
+      .code-viewport {
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
+        position: relative;
+        mask-image: linear-gradient(180deg, transparent 0, #000 6%, #000 100%);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(125,223,214,0.34) transparent;
+      }
+      .code-viewport::-webkit-scrollbar { width: 5px; }
+      .code-viewport::-webkit-scrollbar-track { background: transparent; }
+      .code-viewport::-webkit-scrollbar-thumb {
+        background: rgba(125,223,214,0.26);
+        border-radius: 999px;
+      }
+      .code-lines {
+        display: grid;
+        gap: 2px;
+        padding-bottom: 4rem;
+        transition: transform 160ms linear;
+        will-change: transform;
+      }
+      .code-row {
+        display: grid;
+        grid-template-columns: 2rem 1fr;
+        gap: 0.65rem;
+        min-height: 1.45em;
+        opacity: 0;
+        transform: translateY(8px);
+        filter: blur(1.5px);
+        transition:
+          opacity 460ms var(--ease-out-expo),
+          transform 460ms var(--ease-out-expo),
+          filter 460ms var(--ease-out-expo);
+      }
+      .code-row.visible {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+      }
+      .code-row .ln {
+        color: rgba(113, 134, 157, 0.62);
+        text-align: right;
+        user-select: none;
+      }
+      .code-row .src {
+        color: rgba(238,251,255,0.86);
+        white-space: pre;
+      }
+      .kw { color: #ff7ab6; }
+      .fn { color: #7dd3fc; }
+      .str { color: #f7c948; }
+      .num { color: #a7f3d0; }
+      .cm { color: #6f839b; }
+
+      .run-panel {
+        height: clamp(22rem, 58vh, 32rem); /* Matches the editor height */
+        padding: 1.2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        justify-content: flex-start;
+      }
+      .run-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .run-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 90px;
+        height: 34px;
+        border: 1px solid rgba(125,223,214,0.58);
+        color: var(--accent);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        background: rgba(125,223,214,0.08);
+        cursor: pointer;
+        transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+      }
+      .run-button:hover {
+        border-color: rgba(125,223,214,0.78);
+        background: rgba(125,223,214,0.12);
+      }
+      .run-button:active { transform: translateY(1px); }
+      .run-button:disabled { cursor: default; opacity: 0.62; }
+      .run-output {
+        position: relative;
+        height: clamp(13.6rem, 31vh, 17.2rem);
+        flex: 1 1 auto;
+        min-height: 13rem;
+        padding: 0.7rem;
+        border: 1px solid rgba(145,164,184,0.16);
+        background: rgba(6,11,18,0.45);
+        font-family: var(--font-mono);
+        font-size: clamp(0.56rem, 0.82vw, 0.72rem);
+        line-height: 1.48;
+        white-space: pre-wrap;
+        color: rgba(238,251,255,0.86);
+        overflow: hidden;
+      }
+      .run-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.55rem;
+        width: 100%;
+        margin-top: 0;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 420ms var(--ease-out-expo), transform 420ms var(--ease-out-expo);
+      }
+      .run-panel.ran .run-stats {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .run-stat {
+        background: rgba(13, 22, 38, 0.4);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0.5rem 0.7rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        text-align: left;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      }
+      .run-stat:hover {
+        border-color: var(--line-strong);
+      }
+      .run-stat span {
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        font-size: 0.58rem;
+        text-transform: none;
+        letter-spacing: 0.03em;
+      }
+      .run-stat b {
+        font-family: var(--font-display);
+        color: var(--accent);
+        font-size: 1.02rem;
+        font-weight: 600;
+      }
+      .run-stat:nth-child(3) b {
+        color: var(--accent-green);
+        text-shadow: 0 0 10px rgba(57, 211, 83, 0.25);
+      }
+      .run-stat:nth-child(4) b {
+        color: var(--accent-magenta);
+        text-shadow: 0 0 10px rgba(255, 106, 183, 0.25);
+      }
+
+      .closing-hud {
+        margin-top: 2.8rem;
+        width: 100%;
+        max-width: 440px;
+        position: relative;
+        z-index: 2;
+      }
+
+      /* 7. CLASS BALANCE LANES */
+      .analytics-board {
+        width: 100%;
+        max-width: 440px;
+        padding: 1.5rem;
+        margin-top: 1rem;
+        text-align: left;
+      }
+      .analytics-head {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 0.5rem;
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        color: var(--text-muted);
+        text-transform: uppercase;
+      }
+      .flow-lanes {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+      .flow-lane {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+      .flow-lane.attack span { color: var(--danger); }
+      .flow-lane.normal span { color: var(--accent); }
+      .lane-track {
+        height: 12px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        position: relative;
+        overflow: hidden;
+      }
+      .lane-fill {
+        height: 100%;
+        width: 0;
+        transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .lane-fill.attack { background: var(--danger); }
+      .lane-fill.normal { background: var(--accent); }
+      .flow-lane strong {
+        font-size: 1.1rem;
+        font-family: var(--font-display);
+      }
+      .slide-section.visible .lane-fill.attack { width: 100%; }
+      .slide-section.visible .lane-fill.normal { width: 3.4%; }
+
+      /* 8. CONFUSION MATRIX */
+      #section-8 {
+        align-items: stretch;
+      }
+      .matrix-stage {
+        width: min(88vw, 980px);
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: clamp(2rem, 5vw, 4.5rem);
+        align-items: center;
+        position: relative;
+        z-index: 2;
+      }
+      .matrix-stage .copy-block {
+        max-width: 100%;
+      }
+      .matrix-scene {
+        position: relative;
+        min-height: clamp(23rem, 54vh, 34rem);
+        display: grid;
+        align-content: center;
+      }
+      .matrix-ghost {
+        position: absolute;
+        inset: 6% 0 auto 12%;
+        width: min(36vw, 360px);
+        height: min(36vw, 360px);
+        pointer-events: none;
+        opacity: 0.44;
+        filter: blur(0);
+        transform: scale(1);
+        transition:
+          opacity 1100ms var(--ease-out-expo),
+          filter 1100ms var(--ease-out-expo),
+          transform 1100ms var(--ease-out-expo);
+      }
+      .matrix-ghost::before,
+      .matrix-ghost::after {
+        content: "";
+        position: absolute;
+        inset: 16%;
+        border-radius: 35%;
+        border: 1px solid rgba(125,223,214,0.26);
+        transform: rotate(45deg);
+        box-shadow: 0 0 2rem rgba(125,223,214,0.12);
+      }
+      .matrix-ghost::after {
+        inset: 30%;
+        border-color: rgba(255,106,183,0.18);
+        animation: matrixGhostSpin 8s linear infinite;
+      }
+      .matrix-ghost span {
+        position: absolute;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 1rem var(--accent);
+      }
+      .matrix-ghost span:nth-child(1) { left: 20%; top: 24%; }
+      .matrix-ghost span:nth-child(2) { right: 18%; top: 38%; background: var(--accent-magenta); box-shadow: 0 0 1rem var(--accent-magenta); }
+      .matrix-ghost span:nth-child(3) { left: 48%; bottom: 18%; }
+      .slide-section.visible .matrix-ghost {
+        opacity: 0.08;
+        filter: blur(10px);
+        transform: scale(1.12);
+      }
+      @keyframes matrixGhostSpin { to { transform: rotate(405deg); } }
+      .matrix {
+        width: 100%;
+        max-width: 520px;
+        padding: 0;
+        margin-top: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow: visible;
+      }
+      .matrix h3 {
+        font-size: 1.15rem;
+        color: var(--text-primary);
+        font-weight: 500;
+        text-align: left;
+      }
+      .matrix p {
+        font-size: var(--small-size);
+        color: var(--text-muted);
+        margin: 0;
+        text-align: left;
+      }
+      .matrix-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 1.2rem;
+        background: transparent;
+        border: 0;
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+      .matrix-cell {
+        background: rgba(13, 22, 38, 0.52);
+        border: 1px solid rgba(145,164,184,0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        min-height: 66px;
+        color: var(--text-muted);
+        padding: 0.45rem;
+        opacity: 0;
+        transform: translateY(12px) scale(0.96);
+        transition:
+          opacity 520ms var(--ease-out-expo),
+          transform 520ms var(--ease-out-expo),
+          background 520ms ease;
+      }
+      .matrix-cell.value {
+        color: var(--text-primary);
+        font-family: var(--font-display);
+        font-size: clamp(1.25rem, 2.4vw, 2.1rem);
+        font-weight: 600;
+      }
+      .matrix-cell.value.good {
+        background: rgba(57, 211, 83, 0.08);
+        color: var(--accent-green);
+      }
+      .matrix-cell.value.bad {
+        background: rgba(255, 90, 122, 0.08);
+        color: var(--danger);
+      }
+      .slide-section.visible .matrix-cell.value.good {
+        background: rgba(57, 211, 83, 0.18);
+      }
+      .slide-section.visible .matrix-cell.value.bad {
+        background: rgba(255, 90, 122, 0.16);
+      }
+      .slide-section.visible .matrix-cell {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      .slide-section.visible .matrix-cell:nth-child(1) { transition-delay: 0.24s; }
+      .slide-section.visible .matrix-cell:nth-child(2) { transition-delay: 0.30s; }
+      .slide-section.visible .matrix-cell:nth-child(3) { transition-delay: 0.36s; }
+      .slide-section.visible .matrix-cell:nth-child(4) { transition-delay: 0.42s; }
+      .slide-section.visible .matrix-cell:nth-child(5) { transition-delay: 0.48s; }
+      .slide-section.visible .matrix-cell:nth-child(6) { transition-delay: 0.54s; }
+      .slide-section.visible .matrix-cell:nth-child(7) { transition-delay: 0.60s; }
+      .slide-section.visible .matrix-cell:nth-child(8) { transition-delay: 0.66s; }
+      .slide-section.visible .matrix-cell:nth-child(9) { transition-delay: 0.72s; }
+
+      /* 9. RISK DONUT CHART */
+      .risk-viz-container {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: clamp(1.8rem, 4vw, 3.4rem);
+        width: 100%;
+        max-width: 620px;
+        margin-top: 1.6rem;
+        text-align: left;
+      }
+      .donut-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        padding: 0;
+        width: 240px;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow: visible;
+        flex-shrink: 0;
+      }
+      .risk-donut {
+        width: 220px;
+        height: 220px;
+        transform: rotate(-90deg);
+        filter: drop-shadow(0 0 1.6rem rgba(125,223,214,0.14));
+      }
+      .donut-base {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.03);
+        stroke-width: 12;
+      }
+      .donut-correct {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 12;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        transition: stroke-dashoffset 1.6s 450ms var(--ease-out-expo);
+      }
+      .donut-error {
+        fill: none;
+        stroke-width: 12;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        transition: stroke-dashoffset 1.6s 450ms var(--ease-out-expo);
+      }
+      .donut-error.fp { stroke: var(--warning); }
+      .donut-error.fn { stroke: var(--danger); }
+      .donut-center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        width: 8.2rem;
+      }
+      .donut-center b {
+        font-family: var(--font-display);
+        font-size: clamp(2.05rem, 4vw, 3.15rem);
+        color: var(--text-primary);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+      .donut-center span {
+        font-family: var(--font-display);
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 0.28rem;
+        line-height: 1.05;
+        letter-spacing: 0;
+        width: 100%;
+      }
+      .slide-section.visible .donut-correct,
+      .slide-section.visible .donut-error {
+        stroke-dashoffset: 0;
+      }
+      .risk-legend-mini {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        flex: 1;
+      }
+      .risk-line-mini {
+        display: grid;
+        grid-template-columns: 2.5rem 1fr;
+        align-items: start;
+        gap: 0.9rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        border-radius: 0;
+      }
+      .risk-line-mini b {
+        font-family: var(--font-display);
+        font-size: 1.55rem;
+        display: grid;
+        place-items: start;
+        width: auto;
+        height: auto;
+        border-radius: 0;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+      .risk-line-mini b.severity-high {
+        background: transparent;
+        color: var(--danger);
+        border: 0;
+      }
+      .risk-line-mini b.severity-mid {
+        background: transparent;
+        color: var(--warning);
+        border: 0;
+      }
+      .risk-line-mini p {
+        font-size: var(--small-size);
+        margin: 0;
+      }
+      .risk-line-mini p strong {
+        display: block;
+        font-size: var(--small-size);
+      }
+
+      .closing-hud {
+        margin-top: var(--element-gap);
+        width: 100%;
+        max-width: 560px;
+      }
+      .closing-stats-strip {
+        display: flex;
+        gap: clamp(1.5rem, 4vw, 3rem);
+        align-items: baseline;
+        font-family: var(--font-display);
+      }
+      .closing-stat {
+        display: grid;
+        gap: 0.25rem;
+      }
+      .closing-stat span {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        letter-spacing: 0.02em;
+      }
+      .closing-stat strong {
+        font-size: clamp(1.35rem, 3vw, 2.4rem);
+        font-weight: 600;
+      }
+
+      /* ===========================================
+         RESPONSIVE BREAKPOINTS (STACK ON MOBILE / SMALL WINDOWS)
+         =========================================== */
+      @media (max-width: 768px) {
+        .fixed-scene-container {
+          left: 0 !important;
+          opacity: 0.08 !important;
+          z-index: 0 !important;
+        }
+        .slide-section {
+          align-items: center !important;
+          text-align: center !important;
+          padding: 3rem 1.5rem !important;
+        }
+        .copy-block {
+          max-width: min(90vw, 600px) !important;
+          align-items: center !important;
+        }
+        .pipeline-vertical {
+          max-width: min(90vw, 440px) !important;
+        }
+        .analytics-board {
+          max-width: min(90vw, 440px) !important;
+        }
+        .matrix {
+          max-width: min(90vw, 440px) !important;
+        }
+        .risk-viz-container {
+          max-width: min(90vw, 440px) !important;
+        }
+        .terminal-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+        .lab-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+        .dataset-cards-overlay,
+        .engine-labels-overlay {
+          position: static !important;
+          transform: none !important;
+          width: 100% !important;
+          height: auto !important;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          align-items: center;
+          margin-top: 1.5rem;
+          pointer-events: auto;
+        }
+        .dataset-cards-overlay .data-card,
+        .engine-labels-overlay .node {
+          position: static !important;
+          transform: none !important;
+          width: min(90vw, 320px) !important;
+        }
+      }
+
+      /* Disable snapping ONLY on extremely small viewports to prevent cutoff */
+      @media (max-height: 520px), (max-width: 768px) {
+        html, body {
+          overflow-y: auto !important;
+          height: auto !important;
+        }
+        .scroll-container {
+          height: auto !important;
+          overflow-y: visible !important;
+          scroll-snap-type: none !important;
+        }
+        .slide-section {
+          height: auto !important;
+          min-height: 100vh;
+          scroll-snap-align: none !important;
+          scroll-snap-stop: normal !important;
+          padding: 4rem 1.5rem !important;
+          overflow: visible !important;
+        }
+        .nav-dots {
+          display: none !important;
+        }
+      }
+
+      /* Spacing and heights for moderate laptop viewports to keep snapping clean and active */
+      @media (max-height: 780px) and (min-height: 521px) and (min-width: 769px) {
+        :root {
+          --slide-padding: 1.5rem;
+          --content-gap: 0.8rem;
+          --element-gap: 0.4rem;
+          --title-size: clamp(1.4rem, 3vw, 2.4rem);
+          --h2-size: clamp(1.1rem, 2vw, 1.6rem);
+        }
+        .slide-section {
+          padding: 1.5rem 8%;
+        }
+        .copy-block {
+          margin-bottom: 0.5rem;
+        }
+        .terminal {
+          height: clamp(12rem, 30vh, 16rem) !important;
+        }
+        .editor {
+          height: clamp(18rem, 45vh, 22rem) !important;
+        }
+        .run-panel {
+          height: clamp(18rem, 45vh, 22rem) !important;
+        }
+        .run-output {
+          height: 13.1rem !important;
+          min-height: 13.1rem !important;
+        }
+        .code-viewport {
+          height: clamp(12rem, 32vh, 15rem) !important;
+        }
+        .network-engine {
+          width: min(70vw, 380px) !important;
+        }
+        .dataset-cards-overlay,
+        .engine-labels-overlay {
+          width: min(70vw, 380px) !important;
+          height: min(70vw, 380px) !important;
+        }
+        .pipeline-vertical {
+          margin-top: 0.8rem;
+        }
+        .analytics-board {
+          margin-top: 0.8rem;
+          padding: 1rem;
+        }
+        .flow-lanes {
+          gap: 0.6rem;
+        }
+        .flow-lane strong {
+          font-size: 0.95rem;
+        }
+        .matrix {
+          margin-top: 0.8rem;
+          padding: 1rem;
+        }
+        .matrix-stage {
+          width: min(88vw, 900px);
+          gap: 1.5rem;
+        }
+        .matrix-scene {
+          min-height: clamp(17rem, 44vh, 24rem);
+        }
+        .matrix-grid {
+          margin-top: 0.8rem;
+        }
+        .matrix-cell {
+          min-height: 46px;
+        }
+        .donut-panel {
+          padding: 0;
+          width: 180px;
+        }
+        .risk-donut {
+          width: 170px;
+          height: 170px;
+        }
+        .donut-center b {
+          font-size: 2rem;
+        }
+        .risk-viz-container {
+          margin-top: 0.8rem;
+          gap: 1.4rem;
+        }
+        .risk-legend-mini {
+          gap: 0.4rem;
+        }
+        .risk-line-mini {
+          padding: 0.4rem 0.8rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Floating side navigation indicator dots -->
+    <nav class="nav-dots" aria-label="Navigasyon"></nav>
+
+    <!-- FIXED NETWORK SCENE CORE (MORPHS DYNAMICALLY BACKGROUND) -->
+    <div class="fixed-scene-container" aria-hidden="true">
+      <div class="network-engine">
+        <svg class="engine-svg" viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="gradNormal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.1" />
+              <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.6" />
+            </linearGradient>
+            <linearGradient id="gradAttack" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="var(--accent-magenta)" stop-opacity="0.1" />
+              <stop offset="100%" stop-color="var(--accent-magenta)" stop-opacity="0.6" />
+            </linearGradient>
+          </defs>
+          
+          <!-- Concentric Outer Circles -->
+          <circle cx="100" cy="100" r="75" class="engine-ring ring-1" />
+          <circle cx="100" cy="100" r="50" class="engine-ring ring-2" />
+          <circle cx="100" cy="100" r="22" class="engine-ring ring-3" />
+          
+          <!-- Connection Lines for Nodes -->
+          <line x1="100" y1="100" x2="45" y2="45" class="engine-line line-nw" />
+          <line x1="100" y1="100" x2="155" y2="45" class="engine-line line-ne" />
+          <line x1="100" y1="100" x2="45" y2="155" class="engine-line line-sw" />
+          <line x1="100" y1="100" x2="155" y2="155" class="engine-line line-se" />
+          
+          <!-- Splitting Dataset stream flows -->
+          <path d="M 100,100 C 75,75 55,55 45,45" class="stream-path path-normal" />
+          <path d="M 100,100 C 125,125 145,145 155,155" class="stream-path path-attack" />
+
+          <!-- Horizontal pipeline line (Pipeline state 4) -->
+          <line x1="20" y1="100" x2="180" y2="100" class="engine-pipeline-line" />
+
+          <!-- Warning circular bounds -->
+          <circle cx="100" cy="100" r="35" class="warning-ring" />
+          
+          <!-- Center Main glowing Core Node -->
+          <circle cx="100" cy="100" r="8" class="engine-core-node" />
+          
+          <!-- Dataset splitting flows (faded out default) -->
+          <circle cx="100" cy="100" r="6" class="split-node split-normal" />
+          <circle cx="100" cy="100" r="6" class="split-node split-attack" />
+          
+          <!-- Threat warning dots -->
+          <g class="threat-signals">
+            <circle cx="45" cy="45" r="4" class="threat-dot dot-nw" />
+            <circle cx="155" cy="155" r="4" class="threat-dot dot-se" />
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Unified Single Column Flow -->
+    <main class="scroll-container">
+      
+      <!-- SECTION 1: Hero -->
+      <section class="slide-section" id="section-1" data-stage-index="1">
+        <div class="copy-block">
+          <div class="kicker reveal">PCAP'ten davranış sinyaline</div>
+          <h1 class="reveal delay-1">IoT ağ trafiğini modelin okuyacağı dile çeviriyoruz.</h1>
+          <p class="reveal delay-2">Ham paket kaydı, Zeek flow çıktısı ve Random Forest tahmini tek bir analiz hattında birleşiyor.</p>
+        </div>
+      </section>
+
+      <!-- SECTION 2: Problem -->
+      <section class="slide-section" id="section-2" data-stage-index="2">
+        <div class="copy-block">
+          <div class="kicker reveal">Neden zor?</div>
+          <h2 class="reveal delay-1">IoT cihazı sessiz çalışır; saldırı ise davranışta iz bırakır.</h2>
+          <p class="reveal delay-2">Geleneksel ağ koruma yöntemleri şifreli paketlerin içeriğini (payload) okumakta zorlanır. Bu çalışmanın temel hedefi, paketlerin içeriğine dokunmadan bağlantı modellerinin davranışsal sinyallerinden saldırıları yakalamaktır.</p>
+        </div>
+
+        <!-- Labels perfectly overlays NW/NE/SW/SE background node terminals -->
+        <div class="engine-labels-overlay reveal-scale reveal delay-3">
+          <div class="node node-camera" style="position: absolute; left: 22.5%; top: 22.5%; transform: translate(-50%, -50%); pointer-events: auto;">kamera</div>
+          <div class="node node-hub" style="position: absolute; left: 22.5%; top: 77.5%; transform: translate(-50%, -50%); pointer-events: auto;">hub</div>
+          <div class="node node-dns" style="position: absolute; left: 77.5%; top: 22.5%; transform: translate(-50%, -50%); pointer-events: auto;">dns</div>
+          <div class="node hot node-botnet" style="position: absolute; left: 77.5%; top: 77.5%; transform: translate(-50%, -50%); pointer-events: auto;">botnet</div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: Dataset -->
+      <section class="slide-section" id="section-3" data-stage-index="3">
+        <div class="copy-block">
+          <div class="kicker reveal">IoT-23 Veri Seti</div>
+          <h2 class="reveal delay-1">Stratosphere laboratuvarından iki gerçek senaryo seçildi.</h2>
+          <p class="reveal delay-2">Modelimizi eğitmek için gerçek ağ trafiği kayıtları kullanılmıştır. Saldırı senaryosu için malware bulaşmış bir IoT cihazından (CTU-IoT-Malware-Capture-1-1), normal senaryo için ise temiz bir honeypot cihazından (CTU-Honeypot-Capture-4-1) veri alınmıştır.</p>
+        </div>
+
+        <!-- Overlaid text badges directly matching visual splitting paths -->
+        <div class="dataset-cards-overlay reveal-scale reveal delay-3">
+          <div class="data-card panel normal-card" style="position: absolute; left: 22.5%; top: 22.5%; transform: translate(-50%, -50%); width: 140px; padding: 0.6rem; pointer-events: auto; text-align: center;">
+            <span class="label" style="font-size: 0.65rem;">Normal Trafik</span>
+            <b style="font-size: 0.85rem; display: block; margin-top: 0.2rem;">Honeypot-4-1</b>
+          </div>
+          <div class="data-card panel attack-card" style="position: absolute; left: 77.5%; top: 77.5%; transform: translate(-50%, -50%); width: 140px; padding: 0.6rem; pointer-events: auto; text-align: center;">
+            <span class="label" style="font-size: 0.65rem; color: var(--accent-magenta);">Zararlı Trafik</span>
+            <b style="font-size: 0.85rem; display: block; margin-top: 0.2rem;">Malware-1-1</b>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: Pipeline -->
+      <section class="slide-section" id="section-4" data-stage-index="4">
+        <div class="copy-block">
+          <div class="kicker reveal">Uçtan uca akış</div>
+          <h2 class="reveal delay-1">Ham paket kaydı modelin anlayacağı tabloya dönüştü.</h2>
+          <p class="reveal delay-2">Ağ verisi ham PCAP dosyasından başlar, <code>tcpdump</code> ve <code>Zeek</code> ile özetlenir, <code>Pandas</code> ile temizlenir ve nihayetinde <code>Random Forest</code> makine öğrenmesi modeline beslenerek otomatik tespit yapılır.</p>
+        </div>
+
+        <div class="pipeline-vertical reveal-scale reveal delay-3">
+          <div class="pipe-step-box">
+            <span>01</span>
+            <div class="pipe-step-info">
+              <b>PCAP</b>
+              <p>Ham ağ kaydı</p>
+            </div>
+          </div>
+          <div class="pipe-step-box">
+            <span>02</span>
+            <div class="pipe-step-info">
+              <b>tcpdump</b>
+              <p>Kesit filtreleme</p>
+            </div>
+          </div>
+          <div class="pipe-step-box">
+            <span>03</span>
+            <div class="pipe-step-info">
+              <b>Zeek</b>
+              <p>conn.log flow</p>
+            </div>
+          </div>
+          <div class="pipe-step-box">
+            <span>04</span>
+            <div class="pipe-step-info">
+              <b>Pandas</b>
+              <p>Kimlik temizleme</p>
+            </div>
+          </div>
+          <div class="pipe-step-box">
+            <span>05</span>
+            <div class="pipe-step-info">
+              <b>RF Model</b>
+              <p>Sınıflandırma</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 5: Canlı Terminal -->
+      <section class="slide-section" id="section-5" data-stage-index="5">
+        <div class="copy-block">
+          <div class="kicker reveal">Küçültme & Özetleme</div>
+          <h2 class="reveal delay-1">PCAP dosyasından bağlantı loglarına geçiş.</h2>
+          <p class="reveal delay-2">Boyutu gigabaytları bulan devasa ağ kayıtları <code>tcpdump</code> ile filtrelenerek işlenebilir boyuta çekilir. Ardından <code>Zeek</code> aracı, ham paket akışını bağlantı düzeyinde (flow) özetleyen log dosyalarına dönüştürür.</p>
+        </div>
+
+        <div class="terminal-grid reveal-scale reveal delay-3">
+          <div class="terminal panel">
+            <div class="terminal-bar">
+              <span class="traffic-light red"></span><span class="traffic-light yellow"></span><span class="traffic-light green"></span>
+              <span class="terminal-title">tcpdump</span>
+            </div>
+            <div class="terminal-body" data-type="tcpdump"></div>
+          </div>
+          <div class="terminal panel">
+            <div class="terminal-bar">
+              <span class="traffic-light red"></span><span class="traffic-light yellow"></span><span class="traffic-light green"></span>
+              <span class="terminal-title">zeek</span>
+            </div>
+            <div class="terminal-body" data-type="zeek"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6: Model Lab -->
+      <section class="slide-section" id="section-6" data-stage-index="6">
+        <div class="copy-block">
+          <div class="kicker reveal">main.py</div>
+          <h2 class="reveal delay-1">Özellik mühendisliği ve Random Forest eğitimi.</h2>
+          <p class="reveal delay-2">Modelin IP adresi veya port numarası ezberlemesini önlemek için kimlik alanları veri setinden çıkarılır. Eğitim sadece oturum süresi, paket sayıları ve bayt miktarları gibi davranışsal akış verileriyle tamamlanır.</p>
+        </div>
+
+        <div class="lab-grid reveal-scale reveal delay-3">
+          <div class="editor panel">
+            <div class="terminal-bar">
+              <span class="traffic-light red"></span><span class="traffic-light yellow"></span><span class="traffic-light green"></span>
+              <span class="terminal-title">pcap-loglar/main.py</span>
+            </div>
+            <div class="editor-body">
+              <div class="code-viewport" data-code-viewport>
+                <div class="code-lines" data-code></div>
+              </div>
+            </div>
+          </div>
+          <div class="run-panel panel" data-run-panel>
+            <div class="run-header">
+              <button class="run-button" type="button" data-run-button>RUN</button>
+              <p style="font-size: 0.72rem; color: var(--text-muted); max-width: 60%; margin: 0; line-height: 1.3;">Random Forest modeli 150 ağaçla eğitilir.</p>
+            </div>
+            <div class="run-output" data-run-output></div>
+            <div class="run-stats">
+              <div class="run-stat"><span>N_ESTIMATORS</span><b>150</b></div>
+              <div class="run-stat"><span>TRAIN / TEST</span><b>75 / 25</b></div>
+              <div class="run-stat"><span>ACCURACY</span><b data-run-count="99.95" data-suffix="%">0</b></div>
+              <div class="run-stat"><span>F1-score</span><b data-run-count="99.98" data-suffix="%">0</b></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 7: Veri Dağılımı -->
+      <section class="slide-section" id="section-7" data-stage-index="7">
+        <div class="copy-block">
+          <div class="kicker reveal">Sınıf Dengesi</div>
+          <h2 class="reveal delay-1">Saldırı akışı baskın; sınıf dengesi en önemli bağlam.</h2>
+          <p class="reveal delay-2">Gerçek IoT ağlarını yansıtacak şekilde, veri setimizde saldırı akışları ile normal akışlar arasında ciddi bir dengesizlik vardır. Saldırı verileri normal verilerden 369 kat fazladır. Bu durum, sadece doğruluğu (Accuracy) değil, karmaşıklık matrisini de incelememizi gerektirir.</p>
+        </div>
+
+        <div class="analytics-board panel reveal-scale reveal delay-3" style="position: relative; z-index: 2;">
+          <div class="analytics-head">
+            <span>IoT-23 sampled flows</span>
+            <span>sınıf dengesi</span>
+          </div>
+          <div class="flow-lanes">
+            <div class="flow-lane attack">
+              <span>Saldırı</span>
+              <div class="lane-track">
+                <div class="lane-fill attack"></div>
+              </div>
+              <strong>236,938</strong>
+            </div>
+            <div class="flow-lane normal">
+              <span>Normal</span>
+              <div class="lane-track">
+                <div class="lane-fill normal"></div>
+              </div>
+              <strong>642</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 8: Model Sonucu -->
+      <section class="slide-section" id="section-8" data-stage-index="8">
+        <div class="matrix-stage">
+          <div class="copy-block">
+            <div class="kicker reveal">Bulgular</div>
+            <h2 class="reveal delay-1">Model yüksek doğrulukla sınıflandırma üretiyor.</h2>
+            <p class="reveal delay-2">Matrix, skorun arkasındaki güvenlik etkisini gösterir: kaç alarm yanlış üretildi, kaç saldırı kaçırıldı.</p>
+          </div>
+
+          <div class="matrix-scene reveal delay-3">
+            <div class="matrix-ghost" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="matrix">
+              <div>
+                <h3>Karmaşıklık Matrisi</h3>
+                <p>Satır gerçek sınıf, sütun model tahmini.</p>
+              </div>
+              <div class="matrix-grid">
+                <div class="matrix-cell"></div>
+                <div class="matrix-cell">Tahmin<br>Normal</div>
+                <div class="matrix-cell">Tahmin<br>Saldırı</div>
+                <div class="matrix-cell">Gerçek<br>Normal</div>
+                <div class="matrix-cell value good">137</div>
+                <div class="matrix-cell value bad">19</div>
+                <div class="matrix-cell">Gerçek<br>Saldırı</div>
+                <div class="matrix-cell value bad">9</div>
+                <div class="matrix-cell value good">59,230</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 9: Yorum -->
+      <section class="slide-section" id="section-9" data-stage-index="9">
+        <div class="copy-block">
+          <div class="kicker reveal">Hata Türleri</div>
+          <h2 class="reveal delay-1">Hata türü güvenlik etkisini doğrudan belirler.</h2>
+          <p class="reveal delay-2">Yanlış pozitifler (False Positive) operasyonda alarm yorgunluğu yaratırken, yanlış negatifler (False Negative) saldırıların ağa sızmasına neden olur. Modelimiz test edilen binlerce akışta sadece 9 yanlış negatif üreterek yüksek güvenilirlik sunmuştur.</p>
+        </div>
+
+        <div class="risk-viz-container reveal-scale reveal delay-3" style="position: relative; z-index: 2;">
+          <div class="donut-panel">
+            <svg class="risk-donut" viewBox="0 0 200 200" aria-label="Doğru sınıflandırma ve hata türleri">
+              <circle class="donut-base" cx="100" cy="100" r="86"></circle>
+              <path class="donut-correct" data-arc-start="74" data-arc-end="388"></path>
+              <path class="donut-error fp" data-arc-start="36" data-arc-end="48"></path>
+              <path class="donut-error fn" data-arc-start="56" data-arc-end="64"></path>
+            </svg>
+            <div class="donut-center">
+              <b data-count="99.95">0</b>
+              <span>doğru sınıflandırma</span>
+            </div>
+          </div>
+          <div class="risk-legend-mini">
+            <div class="risk-line-mini">
+              <b class="severity-high">9</b>
+              <p><strong>False negative</strong>Saldırı normal sanıldı. Kritik hata.</p>
+            </div>
+            <div class="risk-line-mini">
+              <b class="severity-mid">19</b>
+              <p><strong>False positive</strong>Normal trafik saldırı sanıldı.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 10: Kapanış -->
+      <section class="slide-section" id="section-10" data-stage-index="10">
+        <div class="copy-block">
+          <div class="kicker reveal">Final Mesajı</div>
+          <h2 class="reveal delay-1">Ham ağ trafiğinden hızlı ve anlaşılır güvenlik çıktısı.</h2>
+          <p class="reveal delay-2">Bu çalışma, IoT cihazlarının ağ davranış profillerinin çıkarılarak Random Forest modeliyle uç cihazların anında izlenebileceğini doğrulamaktadır.</p>
+        </div>
+
+        <div class="closing-hud reveal-scale reveal delay-3">
+          <div class="closing-stats-strip">
+            <div class="closing-stat">
+              <span>F1-score</span>
+              <strong class="magenta-text">99.98%</strong>
+            </div>
+            <div class="closing-stat">
+              <span>Toplam hata</span>
+              <strong class="accent-text">28</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- main.py raw source script for streaming -->
+    <script type="text/plain" id="mainPySource">import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+import warnings
+import os
+
+# Terminaldeki gereksiz uyarı mesajlarını gizler
+warnings.filterwarnings('ignore')
+
+def load_zeek_log(filepath, label_value):
+    print(f"[{os.path.basename(filepath)}] okunuyor...")
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+
+    # Zeek loglarında sütun isimleri #fields ile başlayan satırdadır
+    columns = []
+    for line in lines:
+        if line.startswith("#fields"):
+            columns = line.strip().split('\t')[1:]
+            break
+
+    # Başında # olan metadata satırlarını atla, sadece veriyi al
+    data = [line.strip().split('\t') for line in lines if not line.startswith("#")]
+
+    df = pd.DataFrame(data, columns=columns)
+    df['label'] = label_value
+    return df
+
+print("veri işleme pipeline'ı başlatılıyor...\n" + "-"*40)
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+malware_path = os.path.join(script_dir, 'malware_conn.log')
+normal_path = os.path.join(script_dir, 'normal_conn.log')
+
+df_malware = load_zeek_log(malware_path, 1)
+df_normal = load_zeek_log(normal_path, 0)
+df = pd.concat([df_malware, df_normal], ignore_index=True)
+print(f"toplam veri satırı: {len(df)}")
+
+print("veri temizleniyor ve aşırı öğrenme riskleri siliniyor...")
+df.replace('-', np.nan, inplace=True)
+
+drop_cols = ['uid', 'ts', 'id.orig_h', 'id.orig_p', 'id.resp_h', 'id.resp_p']
+df = df.drop(columns=[col for col in drop_cols if col in df.columns], errors='ignore')
+
+string_cols = ['proto', 'service', 'conn_state', 'history', 'local_orig', 'local_resp', 'tunnel_parents']
+df = df.drop(columns=[col for col in string_cols if col in df.columns], errors='ignore')
+
+df = df.apply(pd.to_numeric, errors='coerce').fillna(0)
+df = df.sample(frac=0.87, random_state=1905)
+
+X = df.drop('label', axis=1)
+y = df['label']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.25, random_state=1905
+)
+
+print("\nrandom forest modeli eğitiliyor...")
+rf_model = RandomForestClassifier(n_estimators=150, random_state=1905)
+rf_model.fit(X_train, y_train)
+
+y_pred = rf_model.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+
+print("\n" + "="*40)
+print("model sonuçları:")
+print(f"doğruluk (accuracy) : %{acc * 100:.2f}")
+print(f"f1-skoru          : %{f1 * 100:.2f}")
+print("="*40 + "\n")
+
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(8, 6))
+sns.heatmap(
+    cm, annot=True, fmt='d', cmap='Blues',
+    xticklabels=['Normal (0)', 'Saldırı (1)'],
+    yticklabels=['Normal (0)', 'Saldırı (1)']
+)
+
+plt.title('Ağ Trafiği Sınıflandırma: Karmaşıklık Matrisi')
+plt.xlabel('Modelin Tahmin Ettiği')
+plt.ylabel('Gerçek Değer')
+plt.tight_layout()
+
+save_path = os.path.join(script_dir, 'confusion_matrix.png')
+plt.savefig(save_path, dpi=300)
+print("'confusion_matrix.png' dosyası klasöre kaydedildi!")
+
+plt.figure(figsize=(8, 6))
+ax = sns.countplot(x='label', data=df, palette='viridis')
+plt.title('IoT-23 Veri Seti: Normal ve Saldırı Trafiği Dağılımı')
+plt.xlabel('Ağ Trafiği Türü (0: Normal, 1: Saldırı)')
+plt.ylabel('Log (Flow) Sayısı')
+
+for p in ax.patches:
+    ax.annotate(
+        f'{int(p.get_height())}',
+        (p.get_x() + p.get_width() / 2., p.get_height()),
+        ha='center', va='baseline', fontsize=12, color='black',
+        xytext=(0, 5), textcoords='offset points'
+    )
+
+plt.tight_layout()
+dist_path = os.path.join(script_dir, 'veri_dagilimi.png')
+plt.savefig(dist_path, dpi=300)
+print("'veri_dagilimi.png' dosyası klasöre kaydedildi!")</script>
+
+    <!-- JS Slide Presentation Controller -->
+    <script>
+      history.scrollRestoration = "manual";
+
+      class SlidePresentation {
+        constructor() {
+          this.sections = Array.from(document.querySelectorAll(".slide-section"));
+          this.navDotsContainer = document.querySelector(".nav-dots");
+          this.currentSection = 0;
+          
+          this.terminalStarted = false;
+          this.codeStarted = false;
+          this.runStarted = false;
+
+          this.setupNavDots();
+          this.setupIntersectionObserver();
+          this.setupRunButton();
+          this.buildDonutArcs();
+        }
+
+        setupIntersectionObserver() {
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                const index = Number(entry.target.dataset.stageIndex);
+                this.currentSection = index - 1;
+                entry.target.classList.add("visible");
+                this.updateStage(index);
+                this.animateCounters(entry.target);
+                
+                // Trigger typing terminal on section 5
+                if (index === 5) this.startTerminals();
+                // Trigger code editor streaming on section 6
+                if (index === 6) this.startCode();
+              }
+            });
+          }, { threshold: 0.55 });
+
+          this.sections.forEach((sec) => observer.observe(sec));
+        }
+
+        setupNavDots() {
+          this.navDotsContainer.innerHTML = "";
+          this.sections.forEach((_, index) => {
+            const dot = document.createElement("button");
+            dot.className = "nav-dot";
+            dot.type = "button";
+            dot.setAttribute("aria-label", `Bölüm ${index + 1}`);
+            dot.addEventListener("click", () => this.goTo(index));
+            this.navDotsContainer.appendChild(dot);
+          });
+          this.updateDots(0);
+        }
+
+        updateDots(index) {
+          Array.from(this.navDotsContainer.children).forEach((dot, dotIndex) => {
+            dot.classList.toggle("active", dotIndex === index);
+          });
+        }
+
+        goTo(index) {
+          const targetIndex = Math.max(0, Math.min(this.sections.length - 1, index));
+          this.sections[targetIndex].scrollIntoView({ behavior: "smooth" });
+        }
+
+        updateStage(stageIndex) {
+          document.body.setAttribute("data-stage", String(stageIndex));
+          this.updateDots(stageIndex - 1);
+        }
+
+        animateCounters(root) {
+          const counters = root.querySelectorAll("[data-count]");
+          counters.forEach((counter) => {
+            if (counter.dataset.done === "true") return;
+            counter.dataset.done = "true";
+            const target = Number(counter.dataset.count);
+            const suffix = counter.dataset.suffix || "";
+            const decimals = String(target).includes(".") ? 2 : 0;
+            setTimeout(() => {
+              const start = performance.now();
+              const duration = 1200;
+              const tick = (now) => {
+                const progress = Math.min(1, (now - start) / duration);
+                const eased = this.easeOutQuint(progress);
+                counter.textContent = `${(target * eased).toFixed(decimals)}${suffix}`;
+                if (progress < 1) requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+            }, 450);
+          });
+        }
+
+        easeOutQuint(progress) {
+          return 1 - Math.pow(1 - progress, 5);
+        }
+
+        easeOutExpo(progress) {
+          return progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+        }
+
+        easeOutCubic(progress) {
+          return 1 - Math.pow(1 - progress, 3);
+        }
+
+        buildDonutArcs(root = document) {
+          const polar = (cx, cy, r, angle) => {
+            const radians = (angle - 90) * Math.PI / 180;
+            return {
+              x: cx + r * Math.cos(radians),
+              y: cy + r * Math.sin(radians)
+            };
+          };
+
+          const arcPath = (startAngle, endAngle, radius = 86) => {
+            const start = polar(100, 100, radius, endAngle);
+            const end = polar(100, 100, radius, startAngle);
+            const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+            return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${radius} ${radius} 0 ${largeArc} 0 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+          };
+
+          root.querySelectorAll("[data-arc-start][data-arc-end]").forEach((path) => {
+            path.setAttribute("d", arcPath(Number(path.dataset.arcStart), Number(path.dataset.arcEnd)));
+            path.setAttribute("pathLength", "1");
+          });
+        }
+
+        async revealTerminalLines(element, lines, stagger = 190) {
+          element.innerHTML = "";
+          element.classList.remove("done");
+          element.classList.remove("cursor");
+          element.classList.add("running");
+
+          for (const line of lines) {
+            const row = document.createElement("span");
+            row.className = "terminal-line";
+            row.textContent = line;
+            element.appendChild(row);
+            
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            row.classList.add("visible");
+            element.scrollTop = element.scrollHeight;
+            
+            await new Promise((resolve) => setTimeout(resolve, stagger));
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 180));
+          element.classList.remove("running");
+          element.classList.add("done");
+          element.classList.add("cursor");
+          element.scrollTop = element.scrollHeight;
+        }
+
+        startTerminals() {
+          if (this.terminalStarted) return;
+          this.terminalStarted = true;
+          const tcpdump = [
+            "$ tcpdump -r original_iot23.pcap -c 500000 -w filtered.pcap",
+            "reading from file original_iot23.pcap",
+            "500000 packets captured",
+            "filtered.pcap hazır"
+          ];
+          const zeek = [
+            "$ zeek -r filtered.pcap",
+            "conn.log dns.log http.log ssl.log oluşturuldu",
+            "$ ls -lh conn.log",
+            "flow tablosu model için hazır"
+          ];
+          this.revealTerminalLines(document.querySelector('[data-type="tcpdump"]'), tcpdump, 260);
+          setTimeout(() => this.revealTerminalLines(document.querySelector('[data-type="zeek"]'), zeek, 260), 700);
+        }
+
+        setupRunButton() {
+          const button = document.querySelector("[data-run-button]");
+          if (!button) return;
+          button.disabled = true;
+          button.textContent = "WAIT";
+          button.addEventListener("click", () => this.runModelDemo());
+        }
+
+        startCode() {
+          if (this.codeStarted) return;
+          this.codeStarted = true;
+          this.streamCode();
+        }
+
+        async streamCode() {
+          const element = document.querySelector("[data-code]");
+          const viewport = document.querySelector("[data-code-viewport]");
+          const source = document.getElementById("mainPySource").textContent.trim().split("\n");
+          element.innerHTML = "";
+          element.classList.remove("done");
+          viewport.scrollTop = 0;
+
+          source.forEach((line, index) => {
+            const row = document.createElement("div");
+            row.className = "code-row";
+
+            const number = document.createElement("span");
+            number.className = "ln";
+            number.textContent = String(index + 1).padStart(2, "0");
+
+            const code = document.createElement("span");
+            code.className = "src";
+            code.textContent = line || " ";
+
+            row.append(number, code);
+            element.appendChild(row);
+          });
+
+          const rows = Array.from(element.querySelectorAll(".code-row"));
+          const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+          const start = performance.now();
+          const duration = 3300;
+
+          await new Promise((resolve) => {
+            const step = (now) => {
+              const progress = Math.min(1, (now - start) / duration);
+              const revealProgress = Math.min(1, progress / 0.92);
+              const easedReveal = this.easeOutExpo(revealProgress);
+              const scrollProgress = Math.min(1, progress / 0.86);
+              const easedScroll = this.easeOutCubic(scrollProgress);
+              const visibleCount = Math.min(rows.length, Math.max(5, Math.ceil(rows.length * easedReveal)));
+              rows.forEach((row, index) => {
+                if (index < visibleCount) row.classList.add("visible");
+              });
+              viewport.scrollTop = maxScroll * easedScroll;
+
+              // Enable RUN button early as soon as the animation visibly decelerates (at ~72% time, ~98% scroll)
+              if (progress >= 0.72 && !this.runStarted) {
+                const button = document.querySelector("[data-run-button]");
+                if (button && button.disabled) {
+                  button.disabled = false;
+                  button.textContent = "RUN";
+                }
+              }
+
+              if (progress < 1) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+
+          rows.forEach((row) => row.classList.add("visible"));
+          element.classList.add("done");
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+          
+          const button = document.querySelector("[data-run-button]");
+          if (button && !this.runStarted) {
+            button.disabled = false;
+            button.textContent = "RUN";
+          }
+        }
+
+        async runModelDemo() {
+          if (this.runStarted) return;
+          this.runStarted = true;
+          const panel = document.querySelector("[data-run-panel]");
+          const button = document.querySelector("[data-run-button]");
+          const output = document.querySelector("[data-run-output]");
+          button.disabled = true;
+          button.textContent = "RUNNING";
+          const lines = [
+            "$ python3 main.py",
+            "[malware_conn.log] okunuyor...",
+            "[normal_conn.log] okunuyor...",
+            "veri temizleniyor ve overfitting riskleri siliniyor...",
+            "random forest modeli eğitiliyor...",
+            "model sonuçları:",
+            "doğruluk (accuracy) : %99.95",
+            "f1-skoru            : %99.98",
+            "toplam hata         : 28"
+          ];
+          await this.revealTerminalLines(output, lines, 145);
+          await new Promise((resolve) => setTimeout(resolve, 260));
+          panel.classList.add("ran");
+          button.textContent = "DONE";
+          this.animateRunCounters(panel);
+        }
+
+        animateRunCounters(root) {
+          const counters = root.querySelectorAll("[data-run-count]");
+          counters.forEach((counter) => {
+            const target = Number(counter.dataset.runCount);
+            const suffix = counter.dataset.suffix || "";
+            const decimals = String(target).includes(".") ? 2 : 0;
+            const start = performance.now();
+            const duration = 1200;
+            const tick = (now) => {
+              const progress = Math.min(1, (now - start) / duration);
+              const eased = this.easeOutQuint(progress);
+              counter.textContent = `${(target * eased).toFixed(decimals)}${suffix}`;
+              if (progress < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          });
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        new SlidePresentation();
+      });
+    </script>
+  </body>
+</html>
