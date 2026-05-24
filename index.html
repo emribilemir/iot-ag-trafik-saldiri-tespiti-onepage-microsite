@@ -724,6 +724,8 @@
       }
       .cursor::after {
         content: "█";
+        display: block;
+        line-height: 1.55;
         animation: cursorBlink 0.9s steps(1) infinite;
       }
       @keyframes cursorBlink { 50% { opacity: 0; } }
@@ -1923,7 +1925,7 @@ print("'veri_dagilimi.png' dosyası klasöre kaydedildi!")</script>
             "flow tablosu model için hazır"
           ];
           this.revealTerminalLines(document.querySelector('[data-type="tcpdump"]'), tcpdump, 260);
-          setTimeout(() => this.revealTerminalLines(document.querySelector('[data-type="zeek"]'), zeek, 260), 700);
+          this.revealTerminalLines(document.querySelector('[data-type="zeek"]'), zeek, 260);
         }
 
         setupRunButton() {
